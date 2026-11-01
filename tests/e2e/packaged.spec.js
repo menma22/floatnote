@@ -3,10 +3,10 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-test('packaged Windows executable opens a usable local note', async () => {
+test('packaged executable opens a usable local note', async () => {
   test.skip(
     !process.env.FLOATNOTE_TEST_EXECUTABLE,
-    'Requires a built Windows executable.',
+    'Requires a built executable.',
   );
   const env = {
     ...process.env,
@@ -25,6 +25,7 @@ test('packaged Windows executable opens a usable local note', async () => {
     const note = await app.firstWindow();
     const editor = note.getByRole('textbox', { name: '付箋の本文' });
     await expect(editor).toBeVisible();
+    await editor.hover();
     await expect(note.locator('#app')).toHaveAttribute('data-color', 'lime');
     await expect(note.locator('#app')).toHaveCSS(
       'background-color',
@@ -48,7 +49,12 @@ test('packaged Windows executable opens a usable local note', async () => {
     const state = await note.evaluate(() => window.floatnote.getInitialState());
     expect(state.note.text).toBe('今日の優先事項');
     await expect(note.getByTestId('save-error')).toBeHidden();
+    await note.mouse.move(-20, -20);
+    await expect(note.getByTestId('titlebar')).toHaveCSS('opacity', '0');
     await note.screenshot({ path: 'docs/images/floatnote.png' });
+    await editor.hover();
+    await expect(note.getByTestId('titlebar')).toHaveCSS('opacity', '1');
+    await note.screenshot({ path: 'docs/images/floatnote-hover.png' });
   } finally {
     await app.close();
   }

@@ -291,10 +291,12 @@ function renderNote(note) {
   };
   document.addEventListener('pointerdown', dismissPalette);
   document.addEventListener('keydown', escapePalette);
+  app.addEventListener('pointerleave', closePalette);
   disposers.push(() =>
     document.removeEventListener('pointerdown', dismissPalette),
   );
   disposers.push(() => document.removeEventListener('keydown', escapePalette));
+  disposers.push(() => app.removeEventListener('pointerleave', closePalette));
   actions.append(colorButton);
   app.append(palette);
 
@@ -456,7 +458,8 @@ async function start() {
   else throw new Error('付箋の情報を読み込めませんでした。');
   disposers.push(api.onError((message) => showError(message, 'save')));
   document.addEventListener('keydown', (event) => {
-    if (!event.ctrlKey || event.isComposing || event.altKey) return;
+    if (!(event.ctrlKey || event.metaKey) || event.isComposing || event.altKey)
+      return;
     if (event.code === 'KeyN' && !event.shiftKey) {
       event.preventDefault();
       request(() => api.createNote());

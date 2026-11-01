@@ -1,8 +1,8 @@
 {
   "name": "floatnote",
   "productName": "Floatnote",
-  "version": "0.1.0",
-  "description": "Simple Windows sticky notes that resurface on your schedule.",
+  "version": "0.1.1",
+  "description": "Simple sticky notes for Windows and macOS that resurface on your schedule.",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -22,7 +22,9 @@
     "test:e2e": "npm run build && playwright test",
     "check": "prettier --check . && eslint .",
     "format": "prettier --write .",
-    "package": "npm run build && electron-builder --win nsis --x64 --publish never"
+    "package": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "package:mac": "npm run build && electron-builder --mac dmg zip --universal --publish never",
+    "inspect:mac": "node scripts/inspect-mac-package.mjs"
   },
   "dependencies": {
     "@tiptap/core": "3.32.2",
@@ -61,6 +63,19 @@
       ],
       "icon": "assets/icon.png",
       "artifactName": "Floatnote-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "assets/icon.svg",
+      "category": "public.app-category.productivity",
+      "artifactName": "Floatnote-${version}-mac-universal.${ext}",
+      "minimumSystemVersion": "13.0.0",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "notarize": false
     },
     "nsis": {
       "oneClick": false,

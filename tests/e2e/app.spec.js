@@ -11,6 +11,7 @@ const project = path.resolve(
 let desktop;
 let dataDirectory;
 let errors;
+const primaryKey = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 async function launch() {
   const env = {
@@ -31,6 +32,7 @@ async function launch() {
   );
   const page = await desktop.firstWindow();
   await expect(page.locator('[data-testid=titlebar]')).toBeVisible();
+  await page.locator('#app').hover({ position: { x: 10, y: 60 } });
   return page;
 }
 
@@ -53,6 +55,50 @@ test.afterEach(async () => {
   expect(errors).toEqual([]);
 });
 
+test('note headers appear on hover or keyboard navigation without moving the memo', async () => {
+  const note = await launch();
+  const header = note.getByTestId('titlebar');
+  const editor = note.getByRole('textbox', { name: '付箋の本文' });
+  await editor.fill('覚えておきたいこと\n'.repeat(25));
+  await editor.press('Home');
+  await note.locator('.editor-area').evaluate((area) => {
+    area.scrollTop = 60;
+  });
+  const position = () =>
+    note.locator('.editor-area').evaluate((area) => ({
+      top: area.getBoundingClientRect().top,
+      scroll: area.scrollTop,
+      text: area.textContent,
+    }));
+  await note.mouse.move(-20, -20);
+  await expect(header).toHaveCSS('opacity', '0');
+  await expect(header).toHaveCSS('pointer-events', 'none');
+  await expect(editor).toBeFocused();
+  const hiddenPosition = await position();
+  await note.screenshot({ path: 'test-results/header-hidden.png' });
+  await note.locator('#app').hover({ position: { x: 10, y: 60 } });
+  await expect(header).toHaveCSS('opacity', '1');
+  expect(await position()).toEqual(hiddenPosition);
+  await note.screenshot({ path: 'test-results/header-visible.png' });
+  await note.getByRole('button', { name: '付箋の色を変更' }).click();
+  await expect(note.getByRole('dialog', { name: '付箋の色' })).toBeVisible();
+  await note.mouse.move(-20, -20);
+  await expect(note.getByRole('dialog', { name: '付箋の色' })).toBeHidden();
+  await expect(header).toHaveCSS('opacity', '0');
+  await editor.focus();
+  await note.keyboard.press('Shift+Tab');
+  await expect(note.getByTestId('close-note')).toBeFocused();
+  await expect(header).toHaveCSS('opacity', '1');
+  await note.keyboard.press('Tab');
+  await expect(editor).toBeFocused();
+  await expect(header).toHaveCSS('opacity', '0');
+  const listWindow = desktop.waitForEvent('window');
+  await note.keyboard.press(`${primaryKey}+Shift+l`);
+  const list = await listWindow;
+  await list.mouse.move(-20, -20);
+  await expect(list.getByTestId('titlebar')).toHaveCSS('opacity', '1');
+});
+
 test('multiple notes, Markdown, colors, cycles, close/list and restart persistence', async () => {
   let note = await launch();
   expect(desktop.windows()).toHaveLength(1);
@@ -72,12 +118,12 @@ test('multiple notes, Markdown, colors, cycles, close/list and restart persisten
   await editor.fill('- 最初の作業');
   await editor.press('Enter');
   await expect(editor.locator('ul li').first()).toHaveText('最初の作業');
-  await editor.press('Control+a');
+  await editor.press(`${primaryKey}+a`);
   await editor.press('Backspace');
   await editor.fill('1. 最初の作業');
   await editor.press('Enter');
   await expect(editor.locator('ol li').first()).toHaveText('最初の作業');
-  await editor.press('Control+a');
+  await editor.press(`${primaryKey}+a`);
   await editor.press('Backspace');
   await editor.fill('再起動しても残るメモ');
   await note.getByTestId('interval-slider').focus();
@@ -266,4 +312,67 @@ test('invalid IPC is rejected and closing every note preserves it in the list', 
     ),
   ).rejects.toThrow();
   await quit();
+});
+
+test('macOS native editing, Command shortcuts and Dock activation preserve notes', async () => {
+  test.skip(process.platform !== 'darwin', 'Requires macOS native menus.');
+  const note = await launch();
+  const editor = note.getByRole('textbox', { name: '付箋の本文' });
+  await editor.fill('Mac の編集確認');
+  await editor.press('Meta+a');
+  await editor.press('Meta+c');
+  expect(await desktop.evaluate(({ clipboard }) => clipboard.readText())).toBe(
+    'Mac の編集確認',
+  );
+  await editor.press('Meta+x');
+  await expect(editor).toHaveText('');
+  await editor.press('Meta+v');
+  await expect(editor).toHaveText('Mac の編集確認');
+  await editor.press('Meta+z');
+  await expect(editor).toHaveText('');
+  await editor.press('Meta+Shift+z');
+  await expect(editor).toHaveText('Mac の編集確認');
+  const newNote = desktop.waitForEvent('window');
+  await editor.press('Meta+n');
+  const second = await newNote;
+  await expect(
+    second.getByRole('textbox', { name: '付箋の本文' }),
+  ).toBeVisible();
+  expect(desktop.windows()).toHaveLength(2);
+  await second
+    .getByRole('textbox', { name: '付箋の本文' })
+    .fill('Command W で保存');
+  await second.keyboard.press('Meta+w');
+  await expect.poll(() => second.isClosed()).toBe(true);
+  const listWindow = desktop.waitForEvent('window');
+  await note.keyboard.press('Meta+Shift+l');
+  const list = await listWindow;
+  await expect(list.getByTestId('note-row')).toHaveCount(2);
+  expect(desktop.windows()).toHaveLength(2);
+  await list.keyboard.press('Meta+w');
+  await expect.poll(() => list.isClosed()).toBe(true);
+  await note.keyboard.press('Meta+w');
+  await expect.poll(() => desktop.windows().length).toBe(0);
+  const activated = desktop.waitForEvent('window');
+  await desktop.evaluate(({ app }) => {
+    app.emit('activate');
+  });
+  const restoredList = await activated;
+  await expect(restoredList.getByTestId('note-row')).toHaveCount(2);
+  await expect(
+    restoredList
+      .getByTestId('note-row')
+      .filter({ hasText: 'Command W で保存' }),
+  ).toBeVisible();
+  const roles = await desktop.evaluate(({ Menu }) => {
+    const flatten = (items) =>
+      items.flatMap((item) => [
+        item.role?.toLowerCase(),
+        ...(item.submenu ? flatten(item.submenu.items) : []),
+      ]);
+    return flatten(Menu.getApplicationMenu().items);
+  });
+  expect(roles).toEqual(
+    expect.arrayContaining(['copy', 'paste', 'undo', 'quit']),
+  );
 });

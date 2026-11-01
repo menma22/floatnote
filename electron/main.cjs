@@ -26,6 +26,7 @@ const { NoteStore } = require('./store.cjs');
 const { NoteScheduler } = require('./scheduler.cjs');
 const { authorizeSender } = require('./ipc-policy.cjs');
 const { readNormalBounds } = require('./window-state.cjs');
+const { applicationMenuTemplate } = require('./platform-menu.cjs');
 
 const testMode = process.env.FLOATNOTE_TEST_MODE === '1';
 if (testMode && process.env.FLOATNOTE_TEST_USER_DATA)
@@ -441,7 +442,17 @@ if (!ownsInstance) {
         },
       });
       setupIpc();
-      Menu.setApplicationMenu(null);
+      const menuTemplate = applicationMenuTemplate(process.platform, {
+        newNote: () => {
+          if (!preparingQuit && !quitting) newNote();
+        },
+        openList: () => {
+          if (!preparingQuit && !quitting) openList();
+        },
+      });
+      Menu.setApplicationMenu(
+        menuTemplate ? Menu.buildFromTemplate(menuTemplate) : null,
+      );
       if (!testMode) {
         tray = new Tray(path.join(root, 'assets', 'tray.png'));
         tray.setToolTip('Floatnote');

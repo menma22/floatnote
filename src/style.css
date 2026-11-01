@@ -119,6 +119,18 @@ button:disabled {
   user-select: none;
 }
 
+.note-app > .titlebar {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 100ms ease;
+}
+.note-app:hover > .titlebar,
+.note-app > .titlebar:has(:focus-visible),
+.note-app:has(.color-palette :focus-visible) > .titlebar {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .note-actions,
 .window-controls {
   display: flex;
@@ -415,6 +427,9 @@ button:disabled {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .note-app > .titlebar {
+    transition: none;
+  }
   .resurfaced {
     animation: none;
   }

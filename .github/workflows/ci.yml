@@ -1,4 +1,4 @@
-name: Windows checks
+name: Desktop checks
 
 on:
   push:
@@ -9,8 +9,28 @@ permissions:
   contents: read
 
 jobs:
-  windows:
-    runs-on: windows-latest
+  desktop:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            package: package
+            executable: release/win-unpacked/Floatnote.exe
+            artifact: Floatnote-Windows
+            files: release/Floatnote-Setup-*.exe
+          - name: macOS Universal on Apple Silicon
+            os: macos-15
+            package: package:mac
+            executable: release/mac-universal/Floatnote.app/Contents/MacOS/Floatnote
+            artifact: Floatnote-macOS
+            files: |
+              release/Floatnote-*-mac-universal.dmg
+              release/Floatnote-*-mac-universal.zip
+              release/mac-package-metadata.json
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,14 +41,59 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run test:e2e
-      - run: npm run package
+      - run: npm run ${{ matrix.package }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - if: runner.os == 'macOS'
+        run: npm run inspect:mac
       - run: npx playwright test tests/e2e/packaged.spec.js
         env:
-          FLOATNOTE_TEST_EXECUTABLE: ${{ github.workspace }}\release\win-unpacked\Floatnote.exe
+          FLOATNOTE_TEST_EXECUTABLE: ${{ github.workspace }}/${{ matrix.executable }}
       - uses: actions/upload-artifact@v4
         with:
-          name: Floatnote-Windows
-          path: release/Floatnote-Setup-*.exe
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.files }}
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: diagnostics-${{ matrix.os }}
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+
+  mac-intel:
+    name: macOS Universal on Intel
+    needs: desktop
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: Floatnote-macOS
+          path: release
+      - name: Extract the same Universal app tested on Apple Silicon
+        run: ditto -x -k release/Floatnote-*-mac-universal.zip release/mac-universal
+      - run: npm run inspect:mac -- release/mac-universal/Floatnote.app release/mac-intel-metadata.json
+      - run: npx playwright test tests/e2e/packaged.spec.js
+        env:
+          FLOATNOTE_TEST_EXECUTABLE: ${{ github.workspace }}/release/mac-universal/Floatnote.app/Contents/MacOS/Floatnote
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Floatnote-macOS-Intel-validation
+          path: release/mac-intel-metadata.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: diagnostics-macos-intel
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
