@@ -1,0 +1,9 @@
+node_modules
+dist
+release
+test-results
+playwright-report
+.test-data
+.local
+package-lock.json
+docs/*-v*.md

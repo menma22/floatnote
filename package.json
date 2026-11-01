@@ -1,0 +1,73 @@
+{
+  "name": "floatnote",
+  "productName": "Floatnote",
+  "version": "0.1.0",
+  "description": "Simple Windows sticky notes that resurface on your schedule.",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "author": "menma22",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/menma22/floatnote.git"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "start": "npm run build && electron .",
+    "build": "vite build",
+    "test": "node --test tests/unit/*.test.cjs",
+    "test:e2e": "npm run build && playwright test",
+    "check": "prettier --check . && eslint .",
+    "format": "prettier --write .",
+    "package": "npm run build && electron-builder --win nsis --x64"
+  },
+  "dependencies": {
+    "@tiptap/core": "3.32.2",
+    "@tiptap/extension-placeholder": "3.32.2",
+    "@tiptap/starter-kit": "3.32.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.1",
+    "electron": "45.2.1",
+    "electron-builder": "26.18.0",
+    "eslint": "10.14.0",
+    "globals": "17.14.0",
+    "prettier": "3.9.10",
+    "sharp": "0.35.5",
+    "vite": "8.3.5"
+  },
+  "build": {
+    "appId": "app.floatnote.desktop",
+    "productName": "Floatnote",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "assets/icon.png",
+      "assets/tray.png",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/icon.png",
+      "artifactName": "Floatnote-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}
