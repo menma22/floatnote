@@ -41,6 +41,7 @@ test('packaged executable opens a usable local note', async () => {
         BrowserWindow.getAllWindows()[0].isMaximized(),
       ),
     ).toBe(true);
+    await editor.hover();
     await note.getByRole('button', { name: '元のサイズに戻す' }).click();
     await expect(
       note.getByRole('button', { name: '最大化', exact: true }),

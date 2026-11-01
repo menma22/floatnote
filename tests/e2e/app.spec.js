@@ -45,6 +45,19 @@ async function state(page) {
   return page.evaluate(() => window.floatnote.getInitialState());
 }
 
+async function closeFromMacMenu(page) {
+  // CDP targets WebContents; exercise native Close through Cocoa instead of a synthetic Cmd+W.
+  const window = await desktop.browserWindow(page);
+  await window.evaluate((window) => window.focus());
+  await expect
+    .poll(() => window.evaluate((window) => window.isFocused()))
+    .toBe(true);
+  await desktop.evaluate(({ Menu }) =>
+    Menu.sendActionToFirstResponder('performClose:'),
+  );
+  await window.dispose();
+}
+
 test.beforeEach(async () => {
   dataDirectory = await mkdtemp(path.join(tmpdir(), 'floatnote-e2e-'));
   errors = [];
@@ -144,10 +157,12 @@ test('multiple notes, Markdown, colors, cycles, close/list and restart persisten
   await second
     .getByRole('textbox', { name: '付箋の本文' })
     .fill('もう一枚のメモ');
+  await note.locator('#app').hover({ position: { x: 10, y: 60 } });
   await note.getByRole('button', { name: '閉じる' }).click();
   await expect.poll(() => note.isClosed()).toBe(true);
 
   const listWindow = desktop.waitForEvent('window');
+  await second.locator('#app').hover({ position: { x: 10, y: 60 } });
   await second.getByRole('button', { name: '付箋一覧' }).click();
   const list = await listWindow;
   await expect(list.getByTestId('note-row')).toHaveCount(2);
@@ -199,89 +214,114 @@ test('multiple notes, Markdown, colors, cycles, close/list and restart persisten
   await quit();
 });
 
-test('production timer resurfaces minimized notes without stealing typing focus', async () => {
+test('production timer resurfaces minimized notes without stealing another application focus', async () => {
   const note = await launch();
   const initial = await state(note);
-  const newCover = desktop.waitForEvent('window');
-  await desktop.evaluate(({ BrowserWindow }) => {
-    const cover = new BrowserWindow({
-      width: 600,
-      height: 400,
-      title: 'Focus check',
-      webPreferences: { sandbox: true },
-    });
-    void cover.loadURL('data:text/html,<input aria-label="Typing stays here">');
+  const focusEnvironment = {
+    ...process.env,
+    FLOATNOTE_FOCUS_TEST_USER_DATA: await mkdtemp(
+      path.join(tmpdir(), 'floatnote-focus-'),
+    ),
+  };
+  delete focusEnvironment.ELECTRON_RUN_AS_NODE;
+  const focusApp = await electron.launch({
+    args: [path.join(project, 'tests/e2e/fixtures/focus-app.cjs')],
+    env: focusEnvironment,
   });
-  const coverPage = await newCover;
-  await coverPage.setContent('<input aria-label="Typing stays here">');
-  await desktop.evaluate(({ app, BrowserWindow }, id) => {
-    const noteWindow = app.floatnoteTest.windows.get(id);
-    noteWindow.minimize();
-    const cover = BrowserWindow.getAllWindows().find(
-      (item) => item !== noteWindow,
+  try {
+    const cover = await focusApp.firstWindow();
+    const typing = cover.getByRole('textbox', { name: 'Typing stays here' });
+    await expect(typing).toBeVisible();
+    await desktop.evaluate(
+      ({ app }, id) => app.floatnoteTest.windows.get(id).minimize(),
+      initial.note.id,
     );
-    cover.show();
-    cover.focus();
-  }, initial.note.id);
-  await coverPage
-    .getByRole('textbox', { name: 'Typing stays here' })
-    .fill('before');
-  await expect
-    .poll(() =>
-      desktop.evaluate(
-        ({ app }, id) => app.floatnoteTest.windows.get(id).isMinimized(),
-        initial.note.id,
+    await focusApp.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      window.show();
+      window.focus();
+    });
+    await typing.fill('before');
+    await expect
+      .poll(() =>
+        focusApp.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0].isFocused(),
+        ),
+      )
+      .toBe(true);
+    await expect
+      .poll(() =>
+        desktop.evaluate(
+          ({ app }, id) => app.floatnoteTest.windows.get(id).isMinimized(),
+          initial.note.id,
+        ),
+      )
+      .toBe(true);
+    await focusApp.evaluate(({ app, BrowserWindow }) => {
+      app.focusTestBlurs = 0;
+      BrowserWindow.getAllWindows()[0].on('blur', () => {
+        app.focusTestBlurs++;
+      });
+    });
+    await desktop.evaluate(({ app }, id) => {
+      const observation = { focuses: 0, levels: [] };
+      app.floatnoteTest.resurfaceObservation = observation;
+      const window = app.floatnoteTest.windows.get(id);
+      window.on('focus', () => {
+        observation.focuses++;
+      });
+      window.on('always-on-top-changed', (_event, value) => {
+        observation.levels.push(value);
+      });
+      app.floatnoteTest.scheduler.entries.get(id).nextAt = Date.now() + 100;
+    }, initial.note.id);
+    await expect
+      .poll(() =>
+        desktop.evaluate(
+          ({ app }, id) => app.floatnoteTest.windows.get(id).isMinimized(),
+          initial.note.id,
+        ),
+      )
+      .toBe(false);
+    expect(
+      await desktop.evaluate(({ app }, id) => {
+        const window = app.floatnoteTest.windows.get(id);
+        return {
+          visible: window.isVisible(),
+          minimized: window.isMinimized(),
+          focused: window.isFocused(),
+        };
+      }, initial.note.id),
+    ).toEqual({ visible: true, minimized: false, focused: false });
+    expect(
+      await focusApp.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].isFocused(),
       ),
-    )
-    .toBe(true);
-  await desktop.evaluate(({ app }, id) => {
-    app.floatnoteTest.scheduler.entries.get(id).nextAt = Date.now() + 100;
-  }, initial.note.id);
-  await expect
-    .poll(() =>
-      desktop.evaluate(
-        ({ app }, id) => app.floatnoteTest.windows.get(id).isMinimized(),
-        initial.note.id,
+    ).toBe(true);
+    expect(
+      await desktop.evaluate(
+        ({ app }) => app.floatnoteTest.resurfaceObservation.levels,
       ),
-    )
-    .toBe(false);
-  const raised = await desktop.evaluate(({ app, BrowserWindow }, id) => {
-    const window = app.floatnoteTest.windows.get(id);
-    const cover = BrowserWindow.getAllWindows().find((item) => item !== window);
-    return {
-      visible: window.isVisible(),
-      minimized: window.isMinimized(),
-      top: window.isAlwaysOnTop(),
-      noteFocused: window.isFocused(),
-      coverFocused: cover.isFocused(),
-    };
-  }, initial.note.id);
-  expect(raised).toEqual({
-    visible: true,
-    minimized: false,
-    top: true,
-    noteFocused: false,
-    coverFocused: true,
-  });
-  await coverPage.keyboard.type(' after');
-  await expect(
-    coverPage.getByRole('textbox', { name: 'Typing stays here' }),
-  ).toHaveValue('before after');
-  await expect
-    .poll(() =>
-      desktop.evaluate(
-        ({ app }, id) => app.floatnoteTest.windows.get(id).isAlwaysOnTop(),
-        initial.note.id,
+    ).toContain(true);
+    await cover.keyboard.type(' after');
+    await expect(typing).toHaveValue('before after');
+    await expect
+      .poll(() =>
+        desktop.evaluate(
+          ({ app }, id) => app.floatnoteTest.windows.get(id).isAlwaysOnTop(),
+          initial.note.id,
+        ),
+      )
+      .toBe(false);
+    expect(
+      await desktop.evaluate(
+        ({ app }) => app.floatnoteTest.resurfaceObservation.focuses,
       ),
-    )
-    .toBe(false);
-  await desktop.evaluate(({ app, BrowserWindow }, id) => {
-    const noteWindow = app.floatnoteTest.windows.get(id);
-    BrowserWindow.getAllWindows()
-      .find((item) => item !== noteWindow)
-      .destroy();
-  }, initial.note.id);
-  await quit();
+    ).toBe(0);
+    expect(await focusApp.evaluate(({ app }) => app.focusTestBlurs)).toBe(0);
+  } finally {
+    await focusApp.close();
+  }
 });
 
 test('invalid IPC is rejected and closing every note preserves it in the list', async () => {
@@ -342,16 +382,16 @@ test('macOS native editing, Command shortcuts and Dock activation preserve notes
   await second
     .getByRole('textbox', { name: '付箋の本文' })
     .fill('Command W で保存');
-  await second.keyboard.press('Meta+w');
+  await closeFromMacMenu(second);
   await expect.poll(() => second.isClosed()).toBe(true);
   const listWindow = desktop.waitForEvent('window');
   await note.keyboard.press('Meta+Shift+l');
   const list = await listWindow;
   await expect(list.getByTestId('note-row')).toHaveCount(2);
   expect(desktop.windows()).toHaveLength(2);
-  await list.keyboard.press('Meta+w');
+  await closeFromMacMenu(list);
   await expect.poll(() => list.isClosed()).toBe(true);
-  await note.keyboard.press('Meta+w');
+  await closeFromMacMenu(note);
   await expect.poll(() => desktop.windows().length).toBe(0);
   const activated = desktop.waitForEvent('window');
   await desktop.evaluate(({ app }) => {

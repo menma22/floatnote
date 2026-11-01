@@ -38,6 +38,7 @@ const roles = new Map();
 const closingWindows = new Set();
 const pendingDrains = new Map();
 const topmostTimers = new Map();
+const macResurfaces = new Map();
 let listWindow = null;
 let tray = null;
 let store;
@@ -82,6 +83,17 @@ function clearTopmost(id) {
   const timer = topmostTimers.get(id);
   if (timer) clearTimeout(timer);
   topmostTimers.delete(id);
+  const state = macResurfaces.get(id);
+  if (!state) return;
+  macResurfaces.delete(id);
+  state.window.removeListener('restore', state.present);
+  if (!state.window.isDestroyed()) {
+    try {
+      state.window.setAlwaysOnTop(false);
+    } finally {
+      state.window.setFocusable(state.focusable);
+    }
+  }
 }
 function captureBounds(window, note) {
   note.bounds = readNormalBounds(window, note.bounds);
@@ -276,9 +288,62 @@ function newNote() {
   openNoteWindow(note);
   return note;
 }
+function resurfaceMacNote(id, window) {
+  let state = macResurfaces.get(id);
+  if (!state) {
+    state = { window, focusable: window.isFocusable(), restoring: false };
+    state.present = () => {
+      state.restoring = false;
+      try {
+        if (window.isDestroyed()) {
+          clearTopmost(id);
+          return;
+        }
+        // macOS restores the pre-minimize window level before emitting restore.
+        window.setAlwaysOnTop(true, 'floating');
+        window.moveTop();
+        send(window, 'resurface');
+        topmostTimers.set(
+          id,
+          setTimeout(() => clearTopmost(id), 1000),
+        );
+      } catch (error) {
+        clearTopmost(id);
+        reportError(error);
+      }
+    };
+    macResurfaces.set(id, state);
+  }
+  const timer = topmostTimers.get(id);
+  if (timer) clearTimeout(timer);
+  topmostTimers.delete(id);
+  try {
+    // Keep the window unable to become key throughout native deminiaturization.
+    window.setFocusable(false);
+    if (state.restoring) return;
+    if (window.isMinimized()) {
+      state.restoring = true;
+      window.once('restore', state.present);
+      window.showInactive();
+    } else {
+      window.showInactive();
+      state.present();
+    }
+  } catch (error) {
+    clearTopmost(id);
+    throw error;
+  }
+}
 function resurfaceNote(id) {
   const window = windows.get(id);
   if (!window || window.isDestroyed() || closingWindows.has(window.id)) return;
+  if (
+    process.platform === 'darwin' &&
+    (window.isMinimized() || macResurfaces.has(id))
+  ) {
+    resurfaceMacNote(id, window);
+    return;
+  }
   clearTopmost(id);
   // showInactive also unhides a minimized Windows window without activating it.
   window.setAlwaysOnTop(true, 'floating');
@@ -379,7 +444,11 @@ async function prepareQuit() {
     store.flush();
     quitting = true;
     scheduler.stop();
-    for (const id of topmostTimers.keys()) clearTopmost(id);
+    for (const id of new Set([
+      ...topmostTimers.keys(),
+      ...macResurfaces.keys(),
+    ]))
+      clearTopmost(id);
     tray?.destroy();
     app.quit();
   } catch (error) {
