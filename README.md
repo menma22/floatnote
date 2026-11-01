@@ -41,7 +41,7 @@ npm run package  # release/ に Windows インストーラーを生成
 Electron の main が保存・ウィンドウ・タイマーを管理し、Tiptap が本文を編集します。検証は一時データを使い、普段の付箋へ影響しません。ロック画面や Windows のセキュアデスクトップなどでは手前への表示を保証できません。
 
 - [現在の要件・設計 v5](docs/spec-v5.md) — Windows の表示倍率と寸法復元
-- [実装照合・検証 v1](docs/verification-v1.md) — 要件とコード、確認結果、未実測の範囲
+- [実装照合・検証 v2](docs/verification-v2.md) — 要件とコード、確認結果、CI ビルド条件
 - [要件・設計 v4](docs/spec-v4.md) — 小さい初期サイズと淡い黄緑を反映
 - [要件・設計 v3](docs/spec-v3.md) — 初期サイズを約半分へ変更
 - [要件・設計 v2](docs/spec-v2.md) — 色選択とフォーカス方針

@@ -22,7 +22,7 @@
     "test:e2e": "npm run build && playwright test",
     "check": "prettier --check . && eslint .",
     "format": "prettier --write .",
-    "package": "npm run build && electron-builder --win nsis --x64"
+    "package": "npm run build && electron-builder --win nsis --x64 --publish never"
   },
   "dependencies": {
     "@tiptap/core": "3.32.2",
