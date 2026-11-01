@@ -6,6 +6,8 @@ Windows と Mac のための、定期的に手前へ戻る小さな付箋アプ�
 
 ![Floatnote の付箋](docs/images/floatnote.png)
 
+[カーソルを重ねたときの操作画面](docs/images/floatnote-hover.png)
+
 ## インストール
 
 [最新版をダウンロード](https://github.com/menma22/floatnote/releases/latest)してインストールします。Node.js などの開発環境は不要です。
@@ -52,7 +54,7 @@ Electron の main が保存・ウィンドウ・タイマーを管理し、Tipta
 - [現在の要件・設計 v7](docs/spec-v7.md) — Mac の配布・標準操作とホバーヘッダー
 - [要件・設計 v6](docs/spec-v6.md) — ヘッダー自動表示と AI 向け導入案内
 - [要件・設計 v5](docs/spec-v5.md) — Windows の表示倍率と寸法復元
-- [実装照合・検証 v2](docs/verification-v2.md) — 要件とコード、確認結果、CI ビルド条件
+- [実装照合・検証 v3](docs/verification-v3.md) — Windows・Apple Silicon・Intelでの確認結果と配布条件
 - [要件・設計 v4](docs/spec-v4.md) — 小さい初期サイズと淡い黄緑を反映
 - [要件・設計 v3](docs/spec-v3.md) — 初期サイズを約半分へ変更
 - [要件・設計 v2](docs/spec-v2.md) — 色選択とフォーカス方針

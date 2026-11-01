@@ -1,0 +1,199 @@
+name: Publish tested desktop release
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful Desktop checks run ID
+        required: true
+        type: number
+      tag:
+        description: New stable release tag, such as v0.1.1
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: publish-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_RUN_ID: ${{ inputs.run_id }}
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify the completed source run and unused release tag
+        id: source
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { spawnSync } from 'node:child_process';
+          import { appendFileSync } from 'node:fs';
+
+          const runId = process.env.SOURCE_RUN_ID;
+          const tag = process.env.RELEASE_TAG;
+          const repo = process.env.GITHUB_REPOSITORY;
+          assert.match(runId, /^[1-9]\d*$/);
+          assert.ok(Number.isSafeInteger(Number(runId)), 'The run ID must be an integer.');
+          assert.match(tag, /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
+
+          function api(endpoint, allowMissing = false) {
+            const result = spawnSync('gh', ['api', endpoint], { encoding: 'utf8' });
+            assert.ifError(result.error);
+            if (allowMissing && result.status !== 0 && /\(HTTP 404\)/.test(result.stderr)) return null;
+            assert.equal(result.status, 0, result.stderr);
+            return JSON.parse(result.stdout);
+          }
+
+          const run = api(`repos/${repo}/actions/runs/${runId}`);
+          assert.equal(String(run.id), runId);
+          assert.equal(run.repository?.full_name, repo);
+          assert.equal(run.head_repository?.full_name, repo, 'Fork builds cannot be published.');
+          assert.equal(run.path, '.github/workflows/ci.yml');
+          assert.equal(run.status, 'completed');
+          assert.equal(run.conclusion, 'success');
+          assert.ok(['push', 'workflow_dispatch'].includes(run.event), 'Publish a push or manual CI run, not a pull-request merge build.');
+          assert.match(run.head_sha, /^[a-f0-9]{40}$/);
+          assert.equal(api(`repos/${repo}/releases/tags/${tag}`, true), null, 'The release already exists.');
+          assert.equal(api(`repos/${repo}/git/ref/tags/${tag}`, true), null, 'The tag already exists.');
+          appendFileSync(process.env.GITHUB_OUTPUT, `run_id=${run.id}\nsha=${run.head_sha}\n`);
+          NODE
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          persist-credentials: false
+      - name: Match the requested tag to the tested source version
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
+          assert.equal(process.env.RELEASE_TAG, `v${manifest.version}`);
+          NODE
+      - uses: actions/download-artifact@v4
+        with:
+          name: Floatnote-Windows
+          path: artifacts/windows
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.source.outputs.run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: Floatnote-macOS
+          path: artifacts/mac
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.source.outputs.run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: Floatnote-macOS-Intel-validation
+          path: artifacts/mac-intel
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.source.outputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify distribution files and generate checksums and release notes
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import { createReadStream, lstatSync, readFileSync, writeFileSync } from 'node:fs';
+          import path from 'node:path';
+
+          const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
+          const version = manifest.version;
+          assert.equal(process.env.RELEASE_TAG, `v${version}`);
+          const files = [
+            `artifacts/windows/Floatnote-Setup-${version}.exe`,
+            `artifacts/mac/Floatnote-${version}-mac-universal.dmg`,
+            `artifacts/mac/Floatnote-${version}-mac-universal.zip`,
+            'artifacts/mac/mac-package-metadata.json',
+            'artifacts/mac-intel/mac-intel-metadata.json',
+          ];
+          for (const file of files) {
+            const info = lstatSync(file);
+            assert.ok(info.isFile() && info.size > 0, `${file} must be a nonempty regular file.`);
+          }
+          const reports = files.slice(3).map((file) => JSON.parse(readFileSync(file, 'utf8')));
+          for (const [index, report] of reports.entries()) {
+            assert.equal(report.version, version);
+            assert.equal(report.electronVersion, manifest.devDependencies.electron);
+            assert.equal(report.runner.architecture, ['arm64', 'x64'][index]);
+            assert.equal(report.minimumSystemVersion, manifest.build.mac.minimumSystemVersion);
+            assert.equal(report.signature.kind, 'ad-hoc');
+            assert.equal(report.signature.developerId, false);
+            assert.equal(report.signature.notarized, false);
+            assert.ok(report.binaries.length > 0);
+            assert.ok(report.binaries.some((binary) => binary.path === 'Contents/MacOS/Floatnote'));
+            for (const binary of report.binaries) {
+              assert.deepEqual([...binary.architectures].sort(), ['arm64', 'x86_64']);
+              assert.ok(binary.minimumSystemVersions.arm64 && binary.minimumSystemVersions.x86_64);
+            }
+          }
+          const sortedBinaries = (report) => [...report.binaries].sort((a, b) => a.path.localeCompare(b.path));
+          assert.deepEqual(sortedBinaries(reports[0]), sortedBinaries(reports[1]), 'Both native runners must inspect the same Universal binaries.');
+
+          const checksums = [];
+          for (const file of files) {
+            const hash = createHash('sha256');
+            for await (const chunk of createReadStream(file)) hash.update(chunk);
+            checksums.push(`${hash.digest('hex')}  ${path.basename(file)}`);
+          }
+          writeFileSync('artifacts/SHA256SUMS.txt', `${checksums.join('\n')}\n`);
+          files.push('artifacts/SHA256SUMS.txt');
+          writeFileSync(path.join(process.env.RUNNER_TEMP, 'release-files.json'), JSON.stringify(files));
+          const source = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}`;
+          const notes = [
+            '普段はメモだけを表示し、カーソルを重ねるとヘッダーが現れるようにしました。',
+            '',
+            '- Windows 10/11 x64 用インストーラーと、macOS 13 Ventura 以降の Universal 版（Apple Silicon・Intel）を同梱しています。',
+            '- Mac では DMG または ZIP 内の Floatnote.app を Applications へコピーしてください。',
+            '- 更新前に、起動中の旧版 Floatnote を終了してください。',
+            '- Windows 版は未署名です。Mac 版はアドホック署名で、Developer ID による署名・Apple の公証（notarization）はありません。OS の警告や配布元は本人が確認してください。',
+            '- ダウンロード後、同じ Release の SHA256SUMS.txt と配布ファイルの SHA256 を照合してください。',
+            '',
+            `[インストール手順・自分の AI に渡せる依頼文](${source}/blob/main/docs/install-v3.md)`,
+            '',
+            `[Windows・Apple Silicon・Intel の検証元 CI](${source}/actions/runs/${process.env.SOURCE_RUN_ID})`,
+            `検証したコミット: ${process.env.SOURCE_SHA}。この CI の配布物を再ビルドせず公開しています。`,
+          ];
+          writeFileSync(path.join(process.env.RUNNER_TEMP, 'release-notes.md'), `${notes.join('\n')}\n`);
+          NODE
+      - name: Create a new tag and publish the verified release
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { readFileSync } from 'node:fs';
+          import path from 'node:path';
+
+          const tag = process.env.RELEASE_TAG;
+          const sha = process.env.SOURCE_SHA;
+          const files = JSON.parse(readFileSync(path.join(process.env.RUNNER_TEMP, 'release-files.json'), 'utf8'));
+          execFileSync('gh', [
+            'api', `repos/${process.env.GITHUB_REPOSITORY}/git/refs`, '--method', 'POST',
+            '-f', `ref=refs/tags/${tag}`, '-f', `sha=${sha}`,
+          ], { stdio: 'inherit' });
+          execFileSync('gh', [
+            'release', 'create', tag, ...files, '--verify-tag', '--target', sha,
+            '--title', `Floatnote ${tag}`, '--latest',
+            '--notes-file', path.join(process.env.RUNNER_TEMP, 'release-notes.md'),
+          ], { stdio: 'inherit' });
+          NODE
