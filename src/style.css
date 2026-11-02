@@ -126,7 +126,7 @@ button:disabled {
 }
 .note-app:hover > .titlebar,
 .note-app > .titlebar:has(:focus-visible),
-.note-app:has(.color-palette :focus-visible) > .titlebar {
+.note-app:has(.color-palette:not([hidden])) > .titlebar {
   opacity: 1;
   pointer-events: auto;
 }
@@ -202,6 +202,7 @@ button:disabled {
 }
 
 .color-palette {
+  -webkit-app-region: no-drag;
   position: absolute;
   top: 35px;
   left: 34px;

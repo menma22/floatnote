@@ -51,9 +51,11 @@ npm run package:mac # Mac 上で Universal DMG / ZIP を生成
 
 Electron の main が保存・ウィンドウ・タイマーを管理し、Tiptap が本文を編集します。検証は一時データを使い、普段の付箋へ影響しません。ロック画面や Windows のセキュアデスクトップなどでは手前への表示を保証できません。
 
-- [現在の要件・設計 v9](docs/spec-v9.md) — 読み込み通知を待たずに新規付箋・一覧を表示
+- [現在の要件・設計 v10](docs/spec-v10.md) — ポインター移動で色パレットを閉じない
+- [要件・設計 v9](docs/spec-v9.md) — 読み込み通知を待たずに新規付箋・一覧を表示
 - [要件・設計 v8](docs/spec-v8.md) — 新規付箋・一覧の応答時間の条件
-- [実装照合・検証 v5](docs/verification-v5.md) — 最終方式・PCへの適用と表示速度
+- [実装照合・検証 v6](docs/verification-v6.md) — 色パレットの修正とPCへの適用
+- [実装照合・検証 v5](docs/verification-v5.md) — 表示方式・PCへの適用と表示速度
 - [実装照合・検証 v4](docs/verification-v4.md) — 中間方式の表示速度と既存の未解決事項
 - [要件・設計 v7](docs/spec-v7.md) — Mac の配布・標準操作とホバーヘッダー
 - [要件・設計 v6](docs/spec-v6.md) — ヘッダー自動表示と AI 向け導入案内

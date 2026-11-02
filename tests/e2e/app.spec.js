@@ -101,7 +101,13 @@ test('note headers appear on hover or keyboard navigation without moving the mem
   await note.getByRole('button', { name: '付箋の色を変更' }).click();
   await expect(note.getByRole('dialog', { name: '付箋の色' })).toBeVisible();
   await note.mouse.move(-20, -20);
+  await expect(note.getByRole('dialog', { name: '付箋の色' })).toBeVisible();
+  await expect(header).toHaveCSS('opacity', '1');
+  await note.getByTestId('color-blue').hover();
+  await note.getByTestId('color-blue').click();
+  await expect(note.locator('#app')).toHaveAttribute('data-color', 'blue');
   await expect(note.getByRole('dialog', { name: '付箋の色' })).toBeHidden();
+  await note.mouse.move(-20, -20);
   await expect(header).toHaveCSS('opacity', '0');
   await editor.focus();
   await note.keyboard.press('Shift+Tab');

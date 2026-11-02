@@ -291,12 +291,10 @@ function renderNote(note) {
   };
   document.addEventListener('pointerdown', dismissPalette);
   document.addEventListener('keydown', escapePalette);
-  app.addEventListener('pointerleave', closePalette);
   disposers.push(() =>
     document.removeEventListener('pointerdown', dismissPalette),
   );
   disposers.push(() => document.removeEventListener('keydown', escapePalette));
-  disposers.push(() => app.removeEventListener('pointerleave', closePalette));
   actions.append(colorButton);
   app.append(palette);
 
