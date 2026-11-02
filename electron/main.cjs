@@ -224,7 +224,7 @@ function openNoteWindow(note, { focus = true } = {}) {
   note.isOpen = true;
   scheduler.open(note.id, note.intervalMinutes);
   changed();
-  window.once('ready-to-show', () => {
+  window.webContents.once('did-finish-load', () => {
     if (focus) window.show();
     else window.showInactive();
   });
@@ -261,7 +261,10 @@ function openList() {
     windowOptions({ width: 520, height: 580 }, 'Floatnote — 付箋一覧'),
   );
   secureWindow(listWindow, { kind: 'list' });
-  listWindow.once('ready-to-show', () => listWindow?.show());
+  listWindow.webContents.once('did-finish-load', () => {
+    listWindow?.show();
+    listWindow?.focus();
+  });
   listWindow.on('close', (event) => {
     if (quitting) return;
     event.preventDefault();

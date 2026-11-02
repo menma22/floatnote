@@ -32,6 +32,11 @@ async function launch() {
   );
   const page = await desktop.firstWindow();
   await expect(page.locator('[data-testid=titlebar]')).toBeVisible();
+  const native = await desktop.browserWindow(page);
+  await expect
+    .poll(() => native.evaluate((window) => window.isVisible()))
+    .toBe(true);
+  await native.dispose();
   await page.locator('#app').hover({ position: { x: 10, y: 60 } });
   return page;
 }
@@ -110,6 +115,31 @@ test('note headers appear on hover or keyboard navigation without moving the mem
   const list = await listWindow;
   await list.mouse.move(-20, -20);
   await expect(list.getByTestId('titlebar')).toHaveCSS('opacity', '1');
+});
+
+test('new note and list become native visible immediately after one click', async () => {
+  const note = await launch();
+  for (const action of ['new-note', 'open-list']) {
+    await note.locator('#app').hover({ position: { x: 10, y: 60 } });
+    const next = desktop.waitForEvent('window');
+    const started = Date.now();
+    await note.getByTestId(action).click();
+    const page = await next;
+    const native = await desktop.browserWindow(page);
+    await expect
+      .poll(() => native.evaluate((window) => window.isVisible()), {
+        timeout: 1000,
+      })
+      .toBe(true);
+    await expect(
+      page
+        .getByTestId(action === 'new-note' ? 'interval-value' : 'note-row')
+        .first(),
+    ).toBeVisible({ timeout: 1000 });
+    console.log(`${action}: visible and usable in ${Date.now() - started}ms`);
+    expect(Date.now() - started).toBeLessThan(1000);
+    await native.dispose();
+  }
 });
 
 test('multiple notes, Markdown, colors, cycles, close/list and restart persistence', async () => {

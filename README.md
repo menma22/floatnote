@@ -51,7 +51,9 @@ npm run package:mac # Mac 上で Universal DMG / ZIP を生成
 
 Electron の main が保存・ウィンドウ・タイマーを管理し、Tiptap が本文を編集します。検証は一時データを使い、普段の付箋へ影響しません。ロック画面や Windows のセキュアデスクトップなどでは手前への表示を保証できません。
 
-- [現在の要件・設計 v7](docs/spec-v7.md) — Mac の配布・標準操作とホバーヘッダー
+- [現在の要件・設計 v8](docs/spec-v8.md) — 新規付箋・一覧の即時表示
+- [実装照合・検証 v4](docs/verification-v4.md) — 表示速度の比較と既存の未解決事項
+- [要件・設計 v7](docs/spec-v7.md) — Mac の配布・標準操作とホバーヘッダー
 - [要件・設計 v6](docs/spec-v6.md) — ヘッダー自動表示と AI 向け導入案内
 - [要件・設計 v5](docs/spec-v5.md) — Windows の表示倍率と寸法復元
 - [実装照合・検証 v3](docs/verification-v3.md) — Windows・Apple Silicon・Intelでの確認結果と配布条件
