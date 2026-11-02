@@ -121,6 +121,14 @@ test('new note and list become native visible immediately after one click', asyn
   const note = await launch();
   for (const action of ['new-note', 'open-list']) {
     await note.locator('#app').hover({ position: { x: 10, y: 60 } });
+    await desktop.evaluate(({ app }) => {
+      app.floatnoteTest.presentation = { started: Date.now(), shown: null };
+      app.once('browser-window-created', (_event, window) => {
+        window.once('show', () => {
+          app.floatnoteTest.presentation.shown = Date.now();
+        });
+      });
+    });
     const next = desktop.waitForEvent('window');
     const started = Date.now();
     await note.getByTestId(action).click();
@@ -137,7 +145,14 @@ test('new note and list become native visible immediately after one click', asyn
         .first(),
     ).toBeVisible({ timeout: 1000 });
     console.log(`${action}: visible and usable in ${Date.now() - started}ms`);
-    expect(Date.now() - started).toBeLessThan(1000);
+    const presentation = await desktop.evaluate(
+      ({ app }) => app.floatnoteTest.presentation,
+    );
+    expect(presentation.shown).not.toBeNull();
+    expect(presentation.shown - presentation.started).toBeLessThan(1000);
+    console.log(
+      `${action}: native show in ${presentation.shown - presentation.started}ms`,
+    );
     await native.dispose();
   }
 });

@@ -224,10 +224,6 @@ function openNoteWindow(note, { focus = true } = {}) {
   note.isOpen = true;
   scheduler.open(note.id, note.intervalMinutes);
   changed();
-  window.webContents.once('did-finish-load', () => {
-    if (focus) window.show();
-    else window.showInactive();
-  });
   window.on('move', () => {
     captureBounds(window, note);
     changed();
@@ -248,6 +244,8 @@ function openNoteWindow(note, { focus = true } = {}) {
   window
     .loadFile(rendererPath, { query: { kind: 'note', id: note.id } })
     .catch(reportError);
+  if (focus) window.show();
+  else window.showInactive();
   return window;
 }
 function openList() {
@@ -261,10 +259,6 @@ function openList() {
     windowOptions({ width: 520, height: 580 }, 'Floatnote — 付箋一覧'),
   );
   secureWindow(listWindow, { kind: 'list' });
-  listWindow.webContents.once('did-finish-load', () => {
-    listWindow?.show();
-    listWindow?.focus();
-  });
   listWindow.on('close', (event) => {
     if (quitting) return;
     event.preventDefault();
@@ -283,6 +277,8 @@ function openList() {
   listWindow
     .loadFile(rendererPath, { query: { kind: 'list' } })
     .catch(reportError);
+  listWindow.show();
+  listWindow.focus();
   return listWindow;
 }
 function newNote() {
